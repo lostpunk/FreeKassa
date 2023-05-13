@@ -1,4 +1,5 @@
 <?php
+
 namespace FreeKassa;
 
 class FreeKassa
@@ -13,6 +14,7 @@ class FreeKassa
     protected string $failure_url;
     protected string $notification_url;
     protected array $allowedIps = ['168.119.157.136', '168.119.60.227', '138.201.88.124', '178.154.197.79'];
+    private bool $sandbox = true;
 
 
     /**
@@ -38,45 +40,26 @@ class FreeKassa
         $this->failure_url = $failure_url ?? 'http://' . $_SERVER['HTTP_HOST'] . '/failure-pay/';
         $this->notification_url = $notification_url ?? 'http://' . $_SERVER['HTTP_HOST'] . '/pay/';
     }
-
-    /**
-     * @param float $orderAmount
-     * @param string $orderId
-     * @return string
-     */
-    public function signature(float $orderAmount, string $orderId): string
-    {
-        return md5($this->merchant . ':' . $orderAmount . ':' . $this->secret . ':' . $this->currency . ':' . $orderId);
-    }
-
-    /**
-     * @param $ip
-     * @return bool
-     */
-    public function allowIP($ip): bool
-    {
-        if ($ip == '127.0.0.1') {
-            return true;
-        }
-        return in_array($ip, $this->allowedIps);
-    }
-
     /**
      * @param $callback
      * @return void
      */
-    public function handler($callback = ''): void
+    public function handler(array $request, callable $callback = null): void
     {
-        $request = $_REQUEST;
-        $ip = $this->getIP();
-        if (!$this->allowIP($ip)) {
-            echo "IP not allowed\n";
-            exit();
+
+
+        if (!$this->sandbox) {
+            if (!$this->allowIP()) {
+                echo "IP not allowed\n";
+                exit();
+            }
         }
         $requestAmount = $request['AMOUNT'];
         $requestOrderId = $request['MERCHANT_ORDER_ID'];
-        $sign = $this->signature($requestAmount, $requestOrderId);
-        if (!$this->checkRequestSign($sign)) {
+        $requestSign = $request['SIGN'];
+        $sign = $this->callbackSignature($requestAmount, $requestOrderId);
+
+        if (!$this->checkRequestSign($sign, $requestSign)) {
             echo "bad sign\n";
             exit();
         }
@@ -93,7 +76,7 @@ class FreeKassa
     /**
      * @return string
      */
-    public function getIP(): string
+    protected function getRealIpAddr(): string
     {
         if (isset($_SERVER['HTTP_X_REAL_IP'])) {
             return $_SERVER['HTTP_X_REAL_IP'];
@@ -102,11 +85,58 @@ class FreeKassa
     }
 
     /**
+     * @return bool
+     */
+    public function allowIP(): bool
+    {
+        $ip = $this->getRealIpAddr();
+        if ($ip == '127.0.0.1') {
+            return true;
+        }
+        return in_array($ip, $this->allowedIps);
+    }
+
+    /**
+     * @param float $orderAmount
+     * @param string $orderId
+     * @return string
+     */
+    public function signature(float $orderAmount, string $orderId): string
+    {
+        return md5($this->merchant . ':' . $orderAmount . ':' . $this->secret . ':' . $this->currency . ':' . $orderId);
+    }
+
+
+    /**
+     * @param float $orderAmount
+     * @param string $orderId
+     * @return string
+     */
+    public function callbackSignature(float $orderAmount, string $orderId): string
+    {
+        return md5($this->merchant . ':' . $orderAmount . ':' . $this->secret2 . ':' . $orderId);
+    }
+
+    /**
      * @param string $sign
      * @return bool
      */
-    private function checkRequestSign(string $sign): bool
+    private function checkRequestSign(string $sign, string $requestSign): bool
     {
-        return $sign == $_REQUEST['SIGN'];
+        return $sign == $requestSign;
     }
+
+    /**
+     * @param string $url
+     * @return void
+     */
+    protected function redirect(string $url): void
+    {
+        if (headers_sent() === false) {
+            header('Location: ' . $url);
+        } else {
+            echo '<script type="text/javascript">window.location = "' . $url . '"</script>';
+        }
+    }
+
 }
