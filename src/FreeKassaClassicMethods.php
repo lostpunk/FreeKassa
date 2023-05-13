@@ -2,8 +2,6 @@
 
 namespace FreeKassa;
 
-use function is_callable;
-
 class FreeKassaClassicMethods extends FreeKassa
 {
     private string $url = 'https://pay.freekassa.ru/';
@@ -95,6 +93,5 @@ class FreeKassaClassicMethods extends FreeKassa
             echo '<script type="text/javascript">window.location = "' . $url . '"</script>';
         }
     }
-
 
 }
